@@ -97,7 +97,7 @@ function scheduleStatusUpdate(hour, minute) {
   return nextRun;
 }
 
-// Read status file and send update to API
+// Read status file and send update to API using Contact Form 7 format
 async function sendStatusUpdate() {
   try {
     // Check if file exists
@@ -112,10 +112,26 @@ async function sendStatusUpdate() {
     // Read status content
     const statusContent = fs.readFileSync(statusFilePath, 'utf8');
     
-    // Send to API
-    const response = await axios.post(apiEndpoint, {
-      status: statusContent,
-      timestamp: new Date().toISOString()
+    // Create FormData for Contact Form 7
+    const FormData = require('form-data');
+    const formData = new FormData();
+    
+    // Add required Contact Form 7 fields
+    formData.append('_wpcf7', '4607');
+    formData.append('_wpcf7_version', '6.0.6');
+    formData.append('_wpcf7_locale', 'en_US');
+    formData.append('_wpcf7_unit_tag', 'wpcf7-f4607-p4606-o1');
+    formData.append('_wpcf7_container_post', '4606');
+    formData.append('_wpcf7_posted_data_hash', '');
+    
+    // Add the actual status content to the textarea field
+    formData.append('textarea-Venkatraman', statusContent);
+    
+    // Send to API with proper headers for multipart/form-data
+    const response = await axios.post(apiEndpoint, formData, {
+      headers: {
+        ...formData.getHeaders()
+      }
     });
     
     mainWindow.webContents.send('update-result', {

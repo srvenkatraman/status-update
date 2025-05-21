@@ -45,14 +45,19 @@ An Electron desktop application that reads daily status from a text file and pos
 
 ## API Format
 
-The application sends data to your API in the following JSON format:
+The application is configured to work with WordPress Contact Form 7 API endpoints. It sends data in the `multipart/form-data` format with the following fields:
 
-```json
-{
-  "status": "Your status content from the file",
-  "timestamp": "2023-05-21T13:45:30.123Z"
-}
 ```
+_wpcf7: 4607
+_wpcf7_version: 6.0.6
+_wpcf7_locale: en_US
+_wpcf7_unit_tag: wpcf7-f4607-p4606-o1
+_wpcf7_container_post: 4606
+_wpcf7_posted_data_hash: ""
+textarea-Venkatraman: "Your status content from the file"
+```
+
+The app is specifically configured for a Contact Form 7 form that has a textarea field with the name `textarea-Venkatraman`. This is where your status content will be inserted.
 
 ## Development
 
