@@ -4,6 +4,7 @@ const { ipcRenderer } = require('electron');
 const statusFilePathInput = document.getElementById('statusFilePath');
 const browseButton = document.getElementById('browseButton');
 const apiEndpointInput = document.getElementById('apiEndpoint');
+const formFieldNameInput = document.getElementById('formFieldName');
 const scheduleHourSelect = document.getElementById('scheduleHour');
 const scheduleMinuteSelect = document.getElementById('scheduleMinute');
 const saveSettingsButton = document.getElementById('saveSettingsButton');
@@ -12,8 +13,21 @@ const nextUpdateTimeSpan = document.getElementById('nextUpdateTime');
 const statusPreviewDiv = document.getElementById('statusPreview');
 const resultContainer = document.getElementById('resultContainer');
 const refreshPreviewButton = document.getElementById('refreshPreviewButton');
+const settingsIcon = document.getElementById('settingsIcon');
+const configSection = document.getElementById('configSection');
+const closeConfigButton = document.getElementById('closeConfigButton');
 
 // Event Listeners
+settingsIcon.addEventListener('click', () => {
+  // Show the configuration section
+  configSection.style.display = 'block';
+});
+
+closeConfigButton.addEventListener('click', () => {
+  // Hide the configuration section
+  configSection.style.display = 'none';
+});
+
 browseButton.addEventListener('click', () => {
   ipcRenderer.send('select-status-file');
 });
@@ -36,6 +50,7 @@ saveSettingsButton.addEventListener('click', (event) => {
   const settings = {
     statusFilePath: statusFilePathInput.value,
     apiEndpoint: apiEndpointInput.value,
+    formFieldName: formFieldNameInput.value ? `textarea-${formFieldNameInput.value}` : 'textarea-Venkatraman',
     hour: parseInt(scheduleHourSelect.value),
     minute: parseInt(scheduleMinuteSelect.value)
   };
@@ -76,6 +91,12 @@ ipcRenderer.on('settings-loaded', (event, settings) => {
     apiEndpointInput.value = settings.apiEndpoint;
   }
   
+  if (settings.formFieldName) {
+    // Extract the part after 'textarea-'
+    const fieldName = settings.formFieldName.replace('textarea-', '');
+    formFieldNameInput.value = fieldName;
+  }
+  
   if (settings.hour !== undefined) {
     scheduleHourSelect.value = settings.hour;
   }
@@ -93,9 +114,31 @@ ipcRenderer.on('settings-loaded', (event, settings) => {
 ipcRenderer.on('settings-saved', (event, result) => {
   if (result.success) {
     alert('Settings saved successfully');
+    
+    // Handle the next run time carefully
     if (result.nextRun) {
-      updateNextRunTime(new Date(result.nextRun));
+      try {
+        const nextRunDate = new Date(result.nextRun);
+        
+        // Verify it's a valid date before updating
+        if (!isNaN(nextRunDate.getTime())) {
+          console.log('Valid next run date received:', nextRunDate);
+          updateNextRunTime(nextRunDate);
+        } else {
+          console.error('Invalid date received:', result.nextRun);
+          nextUpdateTimeSpan.textContent = 'Not scheduled';
+        }
+      } catch (err) {
+        console.error('Error parsing next run date:', err);
+        nextUpdateTimeSpan.textContent = 'Not scheduled';
+      }
+    } else {
+      console.warn('No next run date received');
+      nextUpdateTimeSpan.textContent = 'Not scheduled';
     }
+    
+    // Hide the configuration section after saving settings
+    configSection.style.display = 'none';
   } else {
     alert('Error saving settings: ' + result.message);
   }
@@ -129,9 +172,21 @@ ipcRenderer.on('status-preview', (event, result) => {
   }
 });
 
-ipcRenderer.on('update-next-run', (event, nextRunDate) => {
-  if (nextRunDate) {
-    updateNextRunTime(new Date(nextRunDate));
+ipcRenderer.on('update-next-run', (event, nextRunDateISO) => {
+  if (nextRunDateISO) {
+    try {
+      const nextRunDate = new Date(nextRunDateISO);
+      
+      // Verify we have a valid date before updating
+      if (!isNaN(nextRunDate.getTime())) {
+        updateNextRunTime(nextRunDate);
+      } else {
+        nextUpdateTimeSpan.textContent = 'Not scheduled';
+      }
+    } catch (e) {
+      console.error('Error parsing date:', e);
+      nextUpdateTimeSpan.textContent = 'Not scheduled';
+    }
   } else {
     nextUpdateTimeSpan.textContent = 'Not scheduled';
   }
@@ -139,7 +194,13 @@ ipcRenderer.on('update-next-run', (event, nextRunDate) => {
 
 // Helper Functions
 function updateNextRunTime(date) {
-  nextUpdateTimeSpan.textContent = date.toLocaleString();
+  try {
+    // Format the date in a user-friendly way
+    nextUpdateTimeSpan.textContent = date.toLocaleString();
+  } catch (e) {
+    console.error('Error formatting date:', e);
+    nextUpdateTimeSpan.textContent = 'Not scheduled';
+  }
 }
 
 // Initialize
@@ -147,4 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Default to 7:00 PM
   scheduleHourSelect.value = "19";
   scheduleMinuteSelect.value = "0";
+  
+  // Hide configuration section by default
+  configSection.style.display = 'none';
 });

@@ -7,6 +7,7 @@ const axios = require('axios');
 let mainWindow;
 let statusFilePath = '';
 let apiEndpoint = '';
+let formFieldName = ''; // Will be set with user input
 let scheduledJob = null;
 
 function createWindow() {
@@ -35,6 +36,14 @@ app.whenReady().then(() => {
   
   // Load saved settings
   loadSettings();
+  
+  // Set a default schedule after a slight delay to ensure window is fully loaded
+  setTimeout(() => {
+    // Only schedule if not already scheduled from settings
+    if (!scheduledJob) {
+      scheduleStatusUpdate(19, 0);
+    }
+  }, 1500);
 });
 
 app.on('window-all-closed', function () {
@@ -48,16 +57,18 @@ function loadSettings() {
       const settings = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'settings.json')));
       statusFilePath = settings.statusFilePath || '';
       apiEndpoint = settings.apiEndpoint || '';
-      
-      // If we have valid settings, reschedule the job
-      if (statusFilePath && apiEndpoint) {
-        scheduleStatusUpdate(settings.hour || 19, settings.minute || 0);
-      }
+      formFieldName = settings.formFieldName || 'textarea-Venkatraman';
       
       // Send to renderer when window is ready
       if (mainWindow) {
         mainWindow.webContents.on('did-finish-load', () => {
+          // First send settings
           mainWindow.webContents.send('settings-loaded', settings);
+          
+          // Then schedule the job if we have valid settings
+          if (statusFilePath && apiEndpoint) {
+            scheduleStatusUpdate(settings.hour || 19, settings.minute || 0);
+          }
         });
       }
     }
@@ -90,8 +101,22 @@ function scheduleStatusUpdate(hour, minute) {
     sendStatusUpdate();
   });
   
+  // Get next run time and convert to ISO string for reliable serialization over IPC
   const nextRun = scheduledJob ? scheduledJob.nextInvocation() : null;
-  mainWindow.webContents.send('update-next-run', nextRun);
+  const nextRunTimeISO = nextRun ? nextRun.toISOString() : null;
+  
+  // Make sure window is ready before sending messages
+  if (mainWindow && mainWindow.webContents) {
+    if (mainWindow.webContents.isLoading()) {
+      // If window is still loading, wait until it's ready
+      mainWindow.webContents.once('did-finish-load', () => {
+        mainWindow.webContents.send('update-next-run', nextRunTimeISO);
+      });
+    } else {
+      // Window is ready, send immediately
+      mainWindow.webContents.send('update-next-run', nextRunTimeISO);
+    }
+  }
   
   console.log(`Status update scheduled for ${hour}:${minute} every day`);
   return nextRun;
@@ -125,7 +150,8 @@ async function sendStatusUpdate() {
     formData.append('_wpcf7_posted_data_hash', '');
     
     // Add the actual status content to the textarea field
-    formData.append('textarea-Venkatraman', statusContent);
+    const fieldName = formFieldName || 'textarea-Venkatraman';
+    formData.append(fieldName, statusContent);
     
     // Send to API with proper headers for multipart/form-data
     const response = await axios.post(apiEndpoint, formData, {
@@ -168,17 +194,30 @@ ipcMain.on('select-status-file', async (event) => {
 });
 
 ipcMain.on('save-settings', (event, settings) => {
+  console.log('Saving settings:', settings);
   statusFilePath = settings.statusFilePath;
   apiEndpoint = settings.apiEndpoint;
+  formFieldName = settings.formFieldName || 'textarea-Venkatraman';
   
+  // Save all settings including hour and minute
   saveSettings(settings);
   
-  // Schedule the job with new settings
-  const nextRun = scheduleStatusUpdate(settings.hour || 19, settings.minute || 0);
+  // Make sure hour and minute are properly parsed as integers
+  const hour = parseInt(settings.hour) || 19;
+  const minute = parseInt(settings.minute) || 0;
   
+  console.log(`Setting schedule for ${hour}:${minute}`);
+  
+  // Schedule the job with new settings
+  const nextRun = scheduleStatusUpdate(hour, minute);
+  
+  // Convert nextRun to ISO string for reliable transmission
+  const nextRunISO = nextRun ? nextRun.toISOString() : null;
+  
+  // Send the response with the ISO string
   event.reply('settings-saved', {
     success: true,
-    nextRun: nextRun
+    nextRun: nextRunISO
   });
 });
 
